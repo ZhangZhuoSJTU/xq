@@ -64,6 +64,7 @@ func TestFormatXml(t *testing.T) {
 		"unformatted16.xml": "formatted16.xml",
 		"unformatted17.xml": "formatted17.xml",
 		"unformatted18.xml": "formatted18.xml",
+		"unformatted19.xml": "formatted19.xml",
 	}
 
 	for unformattedFile, expectedFile := range files {
@@ -164,6 +165,7 @@ func TestXPathQuery(t *testing.T) {
 
 	tests := []test{
 		{input: "formatted.xml", node: false, single: true, query: "//first_name", result: "John"},
+		{input: "unformatted19.xml", node: false, single: true, query: "//id", result: "18"},
 		{input: "unformatted8.xml", node: false, single: true, query: "//title", result: "Some Title"},
 		{input: "unformatted8.xml", node: true, single: true, query: "//title", result: "<title>Some Title</title>"},
 		{input: "unformatted8.xml", node: false, single: false, query: "count(//link)", result: "2"},
@@ -249,6 +251,31 @@ func TestPagerPrint(t *testing.T) {
 	err = PagerPrint(fileReader, &output, "cat")
 	assert.Nil(t, err)
 	assert.Contains(t, output.String(), "<html>")
+}
+
+func TestSanitizeXmlVersion(t *testing.T) {
+	tests := []struct {
+		input           string
+		expected        string
+		expectedVersion string
+	}{
+		{`<?xml version="1.1"?><root/>`, `<?xml version="1.0"?><root/>`, "1.1"},
+		{"<?xml version='1.1' encoding='UTF-8'?><root/>", "<?xml version='1.0' encoding='UTF-8'?><root/>", "1.1"},
+		{"\ufeff<?xml version=\"1.1\"?><root/>", "\ufeff<?xml version=\"1.0\"?><root/>", "1.1"},
+		{"garbage line\n<?xml version=\"1.1\"?><root/>", "garbage line\n<?xml version=\"1.0\"?><root/>", "1.1"},
+		{`<root attr="1.1"/>`, `<root attr="1.1"/>`, ""},
+		{`<?xml version="1.0"?><root/>`, `<?xml version="1.0"?><root/>`, ""},
+		{`<root/>`, `<root/>`, ""},
+		{``, ``, ""},
+	}
+
+	for _, testCase := range tests {
+		reader, version := SanitizeXmlVersion(strings.NewReader(testCase.input))
+		result, err := io.ReadAll(reader)
+		assert.Nil(t, err)
+		assert.Equal(t, testCase.expected, string(result))
+		assert.Equal(t, testCase.expectedVersion, version)
+	}
 }
 
 func TestEscapeText(t *testing.T) {

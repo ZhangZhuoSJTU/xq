@@ -42,8 +42,25 @@ type QueryOptions struct {
 	Colors   int
 }
 
+var xmlDeclVersion = regexp.MustCompile(`^(<\?xml\s+version\s*=\s*["'])1\.1(["'])`)
+
+func SanitizeXmlVersion(reader io.Reader) (io.Reader, string) {
+	buf := make([]byte, 256)
+	length, _ := io.ReadFull(reader, buf)
+	prefix := buf[:length]
+
+	version := ""
+	if index := bytes.IndexByte(prefix, '<'); index != -1 && xmlDeclVersion.Match(prefix[index:]) {
+		version = "1.1"
+		prefix = append(prefix[:index:index], xmlDeclVersion.ReplaceAll(prefix[index:], []byte("${1}1.0${2}"))...)
+	}
+
+	return io.MultiReader(bytes.NewReader(prefix), reader), version
+}
+
 func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) error {
-	decoder := xml.NewDecoder(reader)
+	sanitizedReader, origXmlVersion := SanitizeXmlVersion(reader)
+	decoder := xml.NewDecoder(sanitizedReader)
 	decoder.Strict = false
 	decoder.CharsetReader = getCharsetReader
 
@@ -87,6 +104,10 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 			_ = write(tagColor("<?"), typedToken.Target)
 
 			pi := strings.TrimSpace(string(typedToken.Inst))
+			if typedToken.Target == "xml" && origXmlVersion != "" {
+				pi = strings.Replace(pi, "1.0", origXmlVersion, 1)
+				origXmlVersion = ""
+			}
 			if pi != "" {
 				attrs := strings.Split(pi, " ")
 				for _, attr := range attrs {
@@ -214,7 +235,8 @@ func XPathQuery(reader io.Reader, writer io.Writer, query string, singleNode boo
 		}
 	}()
 
-	doc, err := xmlquery.ParseWithOptions(reader, xmlquery.ParserOptions{
+	sanitizedReader, _ := SanitizeXmlVersion(reader)
+	doc, err := xmlquery.ParseWithOptions(sanitizedReader, xmlquery.ParserOptions{
 		Decoder: &xmlquery.DecoderOptions{
 			Strict:        false,
 			CharsetReader: getCharsetReader,

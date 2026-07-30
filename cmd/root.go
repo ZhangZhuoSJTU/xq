@@ -308,7 +308,8 @@ func processAsJSON(flags *pflag.FlagSet, reader io.Reader, w io.Writer, contentT
 
 	switch contentType {
 	case utils.ContentXml, utils.ContentHtml:
-		doc, err := xmlquery.Parse(reader)
+		sanitizedReader, _ := utils.SanitizeXmlVersion(reader)
+		doc, err := xmlquery.Parse(sanitizedReader)
 		if err != nil {
 			return fmt.Errorf("error while parsing XML: %w", err)
 		}
