@@ -45,7 +45,7 @@ type QueryOptions struct {
 var xmlDeclVersion = regexp.MustCompile(`^(<\?xml\s+version\s*=\s*["'])1\.1(["'])`)
 
 func SanitizeXmlVersion(reader io.Reader) (io.Reader, string) {
-	buf := make([]byte, 256)
+	buf := make([]byte, 64)
 	length, _ := io.ReadFull(reader, buf)
 	prefix := buf[:length]
 
