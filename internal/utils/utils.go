@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/antchfx/xmlquery"
@@ -26,6 +27,8 @@ const (
 	ColorsForced
 	ColorsDisabled
 )
+
+const attrsLineLengthLimit = 80
 
 type ContentType int
 
@@ -70,6 +73,7 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 	nsAliases := map[string]string{"http://www.w3.org/XML/1998/namespace": "xml"}
 	lastTagName := ""
 	startTagClosed := true
+	multilineTag := false
 	newline := "\n"
 	if indent == "" {
 		newline = ""
@@ -86,6 +90,15 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 	write := func(args ...any) error {
 		_, err := fmt.Fprint(writer, args...)
 		return err
+	}
+
+	closeTag := func(bracket string, depth int) {
+		if multilineTag {
+			_ = write(newline, strings.Repeat(indent, depth))
+			multilineTag = false
+		}
+		_ = write(tagColor(bracket))
+		startTagClosed = true
 	}
 
 	for {
@@ -124,13 +137,13 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 		case xml.StartElement:
 			spaceContent = ""
 			if !startTagClosed {
-				_ = write(tagColor(">"))
-				startTagClosed = true
+				closeTag(">", level-1)
 			}
 			if level > 0 {
 				_ = write(newline, strings.Repeat(indent, level))
 			}
 			var attrs []string
+			attrsLength := 0
 			for _, attr := range typedToken.Attr {
 				if attr.Name.Space == "xmlns" && nsAliases[attr.Value] == "" {
 					nsAliases[attr.Value] = attr.Name.Local
@@ -139,15 +152,24 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 					nsAliases[attr.Value] = ""
 				}
 				escapedValue, _ := escapeText(attr.Value)
-				attrElement := getTokenFullName(attr.Name, nsAliases) + attrColor("=\""+escapedValue+"\"")
-				attrs = append(attrs, attrElement)
-			}
-			attrsStr := strings.Join(attrs, " ")
-			if attrsStr != "" {
-				attrsStr = " " + attrsStr
+				attrName := getTokenFullName(attr.Name, nsAliases)
+				attrs = append(attrs, attrName+attrColor("=\""+escapedValue+"\""))
+				attrsLength += utf8.RuneCountInString(attrName) + utf8.RuneCountInString(escapedValue) + len(`="" `)
 			}
 			currentTagName := getTokenFullName(typedToken.Name, nsAliases)
-			_ = write(tagColor("<"+currentTagName), attrsStr)
+			if attrsLength > attrsLineLengthLimit && newline != "" {
+				_ = write(tagColor("<" + currentTagName))
+				for _, attr := range attrs {
+					_ = write(newline, strings.Repeat(indent, level+1), attr)
+				}
+				multilineTag = true
+			} else {
+				attrsStr := strings.Join(attrs, " ")
+				if attrsStr != "" {
+					attrsStr = " " + attrsStr
+				}
+				_ = write(tagColor("<"+currentTagName), attrsStr)
+			}
 			lastTagName = currentTagName
 			startTagClosed = false
 			level++
@@ -161,8 +183,7 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 			}
 			hasContent = str != ""
 			if hasContent && !startTagClosed {
-				_ = write(tagColor(">"))
-				startTagClosed = true
+				closeTag(">", level-1)
 			}
 			if hasContent && (strings.Contains(str, "&") || strings.Contains(str, "<")) {
 				str = "<![CDATA[" + str + "]]>"
@@ -171,8 +192,7 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 		case xml.Comment:
 			spaceContent = ""
 			if !startTagClosed {
-				_ = write(tagColor(">"))
-				startTagClosed = true
+				closeTag(">", level-1)
 			}
 
 			for index, commentLine := range strings.Split(string(typedToken), "\n") {
@@ -197,16 +217,14 @@ func FormatXml(reader io.Reader, writer io.Writer, indent string, colors int) er
 			if !hasContent {
 				if lastTagName != currentTagName {
 					if !startTagClosed {
-						_ = write(tagColor(">"))
-						startTagClosed = true
+						closeTag(">", level)
 					}
 					_ = write(newline, strings.Repeat(indent, level), tagColor("</"+currentTagName+">"))
 				} else if spaceContent != "" {
-					_ = write(tagColor(">"), spaceContent, tagColor("</"+currentTagName+">"))
-					startTagClosed = true
+					closeTag(">", level)
+					_ = write(spaceContent, tagColor("</"+currentTagName+">"))
 				} else {
-					_ = write(tagColor("/>"))
-					startTagClosed = true
+					closeTag("/>", level)
 				}
 			} else {
 				_ = write(tagColor("</" + currentTagName + ">"))
@@ -401,12 +419,14 @@ func FormatHtml(reader io.Reader, writer io.Writer, indent string, colors int) e
 
 			var attrs []string
 			attrsStr := ""
+			attrsLength := 0
 
 			if hasAttr {
 				for {
 					attrKey, attrValue, moreAttr := tokenizer.TagAttr()
 					escapedValue, _ := escapeText(string(attrValue))
 					attrs = append(attrs, string(attrKey)+attrColor("=\""+escapedValue+"\""))
+					attrsLength += utf8.RuneCount(attrKey) + utf8.RuneCountInString(escapedValue) + len(`="" `)
 					if !moreAttr {
 						break
 					}
@@ -415,7 +435,15 @@ func FormatHtml(reader io.Reader, writer io.Writer, indent string, colors int) e
 				attrsStr = " " + strings.Join(attrs, " ")
 			}
 
-			_ = write(tagColor("<"+string(tagName)), attrsStr)
+			if attrsLength > attrsLineLengthLimit && newline != "" {
+				_ = write(tagColor("<" + string(tagName)))
+				for _, attr := range attrs {
+					_ = write(newline, strings.Repeat(indent, level+1), attr)
+				}
+				_ = write(newline, strings.Repeat(indent, level))
+			} else {
+				_ = write(tagColor("<"+string(tagName)), attrsStr)
+			}
 
 			spaceContent = ""
 			tagJustOpened = false
