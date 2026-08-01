@@ -22,6 +22,7 @@ func TestXmlToJSON(t *testing.T) {
 		{"unformatted2.xml", "formatted2.json", -1},
 		{"unformatted3.xml", "formatted3.json", -1},
 		{"unformatted4.xml", "formatted4.json", 1},
+		{"unformatted5.xml", "formatted5.json", -1},
 	}
 
 	for _, testCase := range tests {

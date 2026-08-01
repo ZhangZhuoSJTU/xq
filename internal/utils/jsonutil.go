@@ -87,6 +87,8 @@ func nodeToJSONInternal(node *xmlquery.Node, depth int) interface{} {
 			return strings.Join(textParts, "\n")
 		}
 		result["#text"] = strings.Join(textParts, "\n")
+	} else if len(result) == 0 {
+		return nil
 	}
 
 	return result
