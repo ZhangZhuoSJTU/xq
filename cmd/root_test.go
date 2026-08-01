@@ -97,6 +97,19 @@ func TestRootCmd(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Contains(t, output, "active")
 
+	output, err = execute(command, "-x", "//first_name", xmlFilePath)
+	assert.Nil(t, err)
+	assert.Contains(t, output, "John")
+
+	_, err = execute(command, "-x", "//missing", xmlFilePath)
+	assert.ErrorIs(t, err, utils.ErrNoMatch)
+
+	_, err = execute(command, "-e", "//missing", xmlFilePath)
+	assert.ErrorIs(t, err, utils.ErrNoMatch)
+
+	_, err = execute(command, "-q", "body > missing", htmlFilePath)
+	assert.ErrorIs(t, err, utils.ErrNoMatch)
+
 	_, err = execute(command, "nonexistent.xml")
 	assert.ErrorContains(t, err, "no such file or directory")
 

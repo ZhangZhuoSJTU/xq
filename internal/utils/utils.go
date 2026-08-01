@@ -45,6 +45,8 @@ type QueryOptions struct {
 	Colors   int
 }
 
+var ErrNoMatch = errors.New("no matches found")
+
 var xmlDeclVersion = regexp.MustCompile(`^(<\?xml\s+version\s*=\s*["'])1\.1(["'])`)
 
 func SanitizeXmlVersion(reader io.Reader) (io.Reader, string) {
@@ -265,11 +267,17 @@ func XPathQuery(reader io.Reader, writer io.Writer, query string, singleNode boo
 	}
 
 	if singleNode {
-		if n := xmlquery.FindOne(doc, query); n != nil {
-			return printNodeContent(writer, n, options)
+		n := xmlquery.FindOne(doc, query)
+		if n == nil {
+			return ErrNoMatch
 		}
+		return printNodeContent(writer, n, options)
 	} else if options.WithTags {
-		for _, n := range xmlquery.Find(doc, query) {
+		nodes := xmlquery.Find(doc, query)
+		if len(nodes) == 0 {
+			return ErrNoMatch
+		}
+		for _, n := range nodes {
 			err := printNodeContent(writer, n, options)
 			if err != nil {
 				return err
@@ -282,17 +290,21 @@ func XPathQuery(reader io.Reader, writer io.Writer, query string, singleNode boo
 		}
 
 		val := expr.Evaluate(xmlquery.CreateXPathNavigator(doc))
+		found := true
 
 		switch typedVal := val.(type) {
 		case float64:
 			_, err = fmt.Fprintf(writer, "%.0f\n", typedVal)
 		case bool:
+			found = typedVal
 			_, err = fmt.Fprintf(writer, "%t\n", typedVal)
 		case string:
+			found = strings.TrimSpace(typedVal) != ""
 			_, err = fmt.Fprintf(writer, "%s\n", strings.TrimSpace(typedVal))
 		case *xpath.NodeIterator:
+			found = false
 			for typedVal.MoveNext() {
-				typedVal.Current()
+				found = true
 				_, err = fmt.Fprintf(writer, "%s\n", strings.TrimSpace(typedVal.Current().Value()))
 				if err != nil {
 					break
@@ -304,6 +316,10 @@ func XPathQuery(reader io.Reader, writer io.Writer, query string, singleNode boo
 
 		if err != nil {
 			return err
+		}
+
+		if !found {
+			return ErrNoMatch
 		}
 	}
 
@@ -326,7 +342,12 @@ func CSSQuery(reader io.Reader, writer io.Writer, query string, attr string, opt
 		return err
 	}
 
-	doc.Find(query).Each(func(index int, item *goquery.Selection) {
+	selection := doc.Find(query)
+	if selection.Length() == 0 {
+		return ErrNoMatch
+	}
+
+	selection.Each(func(index int, item *goquery.Selection) {
 		if attr != "" {
 			_, _ = fmt.Fprintf(writer, "%s\n", strings.TrimSpace(item.AttrOr(attr, "")))
 		} else {

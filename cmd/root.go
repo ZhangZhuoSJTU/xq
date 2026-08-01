@@ -108,6 +108,8 @@ func NewRootCmd() *cobra.Command {
 				return nil
 			}
 
+			matchFound := false
+
 			go func() {
 				defer func() {
 					_ = pw.Close()
@@ -121,6 +123,12 @@ func NewRootCmd() *cobra.Command {
 					} else {
 						err = processContent(reader, pw, cmd.Flags(), jsonOutputMode, indent, colors)
 					}
+
+					if err == nil {
+						matchFound = true
+					} else if errors.Is(err, utils.ErrNoMatch) {
+						err = nil
+					}
 				}
 
 				if err != nil {
@@ -129,7 +137,16 @@ func NewRootCmd() *cobra.Command {
 				}
 			}()
 
-			return utils.PagerPrint(pr, cmd.OutOrStdout(), getPager(cmd.Flags()))
+			if err = utils.PagerPrint(pr, cmd.OutOrStdout(), getPager(cmd.Flags())); err != nil {
+				return err
+			}
+
+			if (xPathQuery != "" || cssQuery != "") && !matchFound {
+				cmd.SilenceErrors = true
+				return utils.ErrNoMatch
+			}
+
+			return nil
 		},
 	}
 }

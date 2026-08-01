@@ -182,6 +182,29 @@ func TestXPathQuery(t *testing.T) {
 	}
 }
 
+func TestXPathQueryNoMatch(t *testing.T) {
+	type test struct {
+		node   bool
+		single bool
+		query  string
+	}
+
+	tests := []test{
+		{node: false, single: true, query: "//missing"},
+		{node: true, single: false, query: "//missing"},
+		{node: false, single: false, query: "//missing"},
+		{node: false, single: false, query: "string(//missing)"},
+	}
+
+	for _, testCase := range tests {
+		output := new(strings.Builder)
+		options := QueryOptions{WithTags: testCase.node, Indent: "  "}
+		reader := strings.NewReader(`<?xml version="1.0"?><root></root>`)
+		err := XPathQuery(reader, output, testCase.query, testCase.single, options)
+		assert.ErrorIs(t, err, ErrNoMatch)
+	}
+}
+
 func TestXPathQueryBoolean(t *testing.T) {
 	tests := map[string]string{
 		"boolean(//root)":    "true",
@@ -192,7 +215,11 @@ func TestXPathQueryBoolean(t *testing.T) {
 		output := new(strings.Builder)
 		options := QueryOptions{}
 		err := XPathQuery(strings.NewReader(`<?xml version="1.0"?><root></root>`), output, query, false, options)
-		assert.Nil(t, err)
+		if expected == "true" {
+			assert.Nil(t, err)
+		} else {
+			assert.ErrorIs(t, err, ErrNoMatch)
+		}
 		assert.Equal(t, expected, strings.Trim(output.String(), "\n"))
 	}
 }
@@ -221,6 +248,10 @@ func TestCSSQuery(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, testCase.result, strings.Trim(output.String(), "\n"))
 	}
+
+	output := new(strings.Builder)
+	err := CSSQuery(strings.NewReader("<html><body></body></html>"), output, "p", "", QueryOptions{})
+	assert.ErrorIs(t, err, ErrNoMatch)
 }
 
 func TestIsHTML(t *testing.T) {
