@@ -84,6 +84,14 @@ Extract part of HTML with tags (not only text content) using CSS selector:
 cat test/data/html/unformatted.html | xq -n -q "head"
 ```
 
+By default, a query that finds no matches produces empty output and a zero exit code.
+Use the `--strict` (`-s`) option to get a non-zero exit code instead, e.g. for testing
+the presence of a node in scripts:
+
+```
+cat test/data/xml/unformatted.xml | xq -s -x //missing || echo "node not found"
+```
+
 Output the result as JSON:
 
 ```

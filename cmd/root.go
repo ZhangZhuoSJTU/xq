@@ -141,7 +141,8 @@ func NewRootCmd() *cobra.Command {
 				return err
 			}
 
-			if (xPathQuery != "" || cssQuery != "") && !matchFound {
+			strict, _ := cmd.Flags().GetBool("strict")
+			if strict && (xPathQuery != "" || cssQuery != "") && !matchFound {
 				cmd.SilenceErrors = true
 				return utils.ErrNoMatch
 			}
@@ -183,6 +184,8 @@ func InitFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().IntP("depth", "d", -1, "Maximum nesting depth for JSON output (-1 for unlimited)")
 	cmd.PersistentFlags().BoolP("in-place", "i", false, "Format file in place")
 	cmd.PersistentFlags().Bool("no-pager", utils.GetConfig().NoPager, "Disable pager for the output")
+	cmd.PersistentFlags().BoolP("strict", "s", utils.GetConfig().Strict,
+		"Exit with a non-zero code if the query yields no matches")
 }
 
 func Execute() {
