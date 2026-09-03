@@ -2,3 +2,9 @@
 /.env
 /dist/
 /coverage.txt
+
+# ProgramBench course-competition artifacts
+executable
+.programbench/venv/
+.programbench/tests/
+.programbench/run/
